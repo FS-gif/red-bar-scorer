@@ -1,74 +1,59 @@
 import streamlit as st
 import numpy as np
+import cv2
 from PIL import Image
 
 st.set_page_config(page_title="Red Bar Scorer", layout="centered")
 
-st.title("赤バースコア判定アプリ（v4.2）")
-st.write("画像をアップロードして、赤いバーの長さを検出しスコア化します。HSVスライダーで色調整可能です。")
+st.title("赤バースコア判定アプリ（スポイト対応版）")
+st.write("画像をアップロードして、赤バーの長さを検出して相対スコアを算出します。")
 
-uploaded_file = st.file_uploader("画像をアップロード（png/jpg/jpeg）", type=["png", "jpg", "jpeg"])
-
-# HSV色域の指定
-st.sidebar.title("色域調整（HSV）")
-h_min = st.sidebar.slider("H min", 0, 179, 0)
-h_max = st.sidebar.slider("H max", 0, 179, 10)
-s_min = st.sidebar.slider("S min", 0, 255, 100)
-s_max = st.sidebar.slider("S max", 0, 255, 255)
-v_min = st.sidebar.slider("V min", 0, 255, 100)
-v_max = st.sidebar.slider("V max", 0, 255, 255)
+uploaded_file = st.file_uploader("画像をアップロード", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    img_array = np.array(image)
-
-    # RGB -> HSV
-    hsv = np.zeros_like(img_array, dtype=np.uint8)
-    for y in range(img_array.shape[0]):
-        for x in range(img_array.shape[1]):
-            r, g, b = img_array[y, x] / 255.0
-            mx = max(r, g, b)
-            mn = min(r, g, b)
-            df = mx - mn
-            h = s = v = 0
-            if df == 0:
-                h = 0
-            elif mx == r:
-                h = (60 * ((g - b) / df) + 360) % 360
-            elif mx == g:
-                h = (60 * ((b - r) / df) + 120) % 360
-            elif mx == b:
-                h = (60 * ((r - g) / df) + 240) % 360
-            s = 0 if mx == 0 else (df / mx)
-            v = mx
-            hsv[y, x] = [int(h / 2), int(s * 255), int(v * 255)]
-
-    # マスク作成
-    h_mask = (hsv[:, :, 0] >= h_min) & (hsv[:, :, 0] <= h_max)
-    s_mask = (hsv[:, :, 1] >= s_min) & (hsv[:, :, 1] <= s_max)
-    v_mask = (hsv[:, :, 2] >= v_min) & (hsv[:, :, 2] <= v_max)
-    mask = h_mask & s_mask & v_mask
-
-    # 横方向に赤領域の幅をカウント
-    bar_lengths = np.sum(mask, axis=1)
-    average_length = np.mean(bar_lengths[bar_lengths > 0]) if np.any(bar_lengths > 0) else 0
-
-    # スコア化（例：300px以上が満点3.0、50pxごとに0.5減点）
-    if average_length >= 300:
-        score = 3.0
-    elif average_length >= 250:
-        score = 2.5
-    elif average_length >= 200:
-        score = 2.0
-    elif average_length >= 150:
-        score = 1.5
-    elif average_length >= 100:
-        score = 1.0
-    elif average_length >= 50:
-        score = 0.5
-    else:
-        score = 0
+    image_np = np.array(image)
+    hsv = cv2.cvtColor(image_np, cv2.COLOR_RGB2HSV)
 
     st.image(image, caption="アップロード画像", use_column_width=True)
-    st.metric("赤バーの長さ平均", f"{average_length:.1f} px")
-    st.metric("スコア", f"{score:.1f} 点")
+
+    click = st.image(image_np, caption="画像をタップして色を選択", use_column_width=True)
+    st.write("※ 現在はスポイトは実装段階にあり、Streamlit上で画像タップは対応中です。")
+
+    # 手動入力の代替スポイト（仮のHSV）
+    h = st.slider("H (色相)", 0, 179, 0)
+    s = st.slider("S (彩度)", 0, 255, 200)
+    v = st.slider("V (明度)", 0, 255, 200)
+    h_range = st.slider("H範囲", 0, 50, 10)
+    s_range = st.slider("S範囲", 0, 127, 60)
+    v_range = st.slider("V範囲", 0, 127, 60)
+
+    lower_hsv = np.array([h - h_range, max(0, s - s_range), max(0, v - v_range)])
+    upper_hsv = np.array([h + h_range, min(255, s + s_range), min(255, v + v_range)])
+
+    mask = cv2.inRange(hsv, lower_hsv, upper_hsv)
+
+    st.image(mask, caption="赤バー検出マスク", use_column_width=True)
+
+    # 各行に対してバーの横幅をスキャン（1列ずつ）
+    row_sums = []
+    for i in range(mask.shape[0]):
+        row = mask[i]
+        count = 0
+        max_count = 0
+        for val in row:
+            if val > 0:
+                count += 1
+                max_count = max(max_count, count)
+            else:
+                count = 0
+        if max_count > 10:
+            row_sums.append(max_count)
+
+    if row_sums:
+        max_len = max(row_sums)
+        scores = [round((val / max_len) * 3, 1) for val in row_sums]
+        for idx, score in enumerate(scores):
+            st.write(f"{idx+1}位： スコア = {score}")
+    else:
+        st.warning("赤バーが検出されませんでした。HSVを調整してください。")
