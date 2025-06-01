@@ -4,56 +4,30 @@ import cv2
 from PIL import Image
 
 st.set_page_config(page_title="Red Bar Scorer", layout="centered")
-
-st.title("赤バースコア判定アプリ（スポイト対応版）")
-st.write("画像をアップロードして、赤バーの長さを検出して相対スコアを算出します。")
+st.title("赤バー スコア判定アプリ（スポイト選択対応）")
+st.write("画像をアップロードして、赤バーの色をスポイトで指定してください。")
 
 uploaded_file = st.file_uploader("画像をアップロード", type=["png", "jpg", "jpeg"])
-
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    image_np = np.array(image)
-    hsv = cv2.cvtColor(image_np, cv2.COLOR_RGB2HSV)
-
+    img_array = np.array(image)
     st.image(image, caption="アップロード画像", use_column_width=True)
 
-    click = st.image(image_np, caption="画像をタップして色を選択", use_column_width=True)
-    st.write("※ 現在はスポイトは実装段階にあり、Streamlit上で画像タップは対応中です。")
+    st.markdown("### スポイトで赤色を指定（画像をクリック）")
+    click_info = st.experimental_data_editor({"click_x": 0, "click_y": 0}, num_rows="dynamic")
 
-    # 手動入力の代替スポイト（仮のHSV）
-    h = st.slider("H (色相)", 0, 179, 0)
-    s = st.slider("S (彩度)", 0, 255, 200)
-    v = st.slider("V (明度)", 0, 255, 200)
-    h_range = st.slider("H範囲", 0, 50, 10)
-    s_range = st.slider("S範囲", 0, 127, 60)
-    v_range = st.slider("V範囲", 0, 127, 60)
+    if "click_x" in click_info and "click_y" in click_info:
+        x, y = click_info["click_x"], click_info["click_y"]
+        if 0 <= y < img_array.shape[0] and 0 <= x < img_array.shape[1]:
+            selected_rgb = img_array[y, x]
+            hsv_color = cv2.cvtColor(np.uint8([[selected_rgb]]), cv2.COLOR_RGB2HSV)[0][0]
 
-    lower_hsv = np.array([h - h_range, max(0, s - s_range), max(0, v - v_range)])
-    upper_hsv = np.array([h + h_range, min(255, s + s_range), min(255, v + v_range)])
+            # 色域範囲を定義
+            lower = np.array([max(hsv_color[0] - 10, 0), 70, 50])
+            upper = np.array([min(hsv_color[0] + 10, 179), 255, 255])
 
-    mask = cv2.inRange(hsv, lower_hsv, upper_hsv)
+            hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+            mask = cv2.inRange(hsv, lower, upper)
 
-    st.image(mask, caption="赤バー検出マスク", use_column_width=True)
-
-    # 各行に対してバーの横幅をスキャン（1列ずつ）
-    row_sums = []
-    for i in range(mask.shape[0]):
-        row = mask[i]
-        count = 0
-        max_count = 0
-        for val in row:
-            if val > 0:
-                count += 1
-                max_count = max(max_count, count)
-            else:
-                count = 0
-        if max_count > 10:
-            row_sums.append(max_count)
-
-    if row_sums:
-        max_len = max(row_sums)
-        scores = [round((val / max_len) * 3, 1) for val in row_sums]
-        for idx, score in enumerate(scores):
-            st.write(f"{idx+1}位： スコア = {score}")
-    else:
-        st.warning("赤バーが検出されませんでした。HSVを調整してください。")
+            result = cv2.bitwise_and(img_array, img_array, mask=mask)
+            st.image(result, caption="赤バー検出マスク", use_column_width=True)
