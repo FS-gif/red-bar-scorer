@@ -77,3 +77,4 @@ if uploaded_file:
     st.image(mask, caption="検出マスク（赤領域）", use_column_width=True)
 else:
     st.info("画像ファイルをアップロードしてください。")
+
