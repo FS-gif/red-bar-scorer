@@ -1,51 +1,45 @@
+
 import streamlit as st
+import cv2
 import numpy as np
 from PIL import Image
-import cv2
+import io
 
-st.set_page_config(page_title="Red Bar Scorer", layout="wide")
-st.title("赤バー解析＆スコア表示アプリ")
+st.title("Red Bar Scorer (RGB Based, Simplified)")
 
-uploaded_file = st.file_uploader("画像をアップロード", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("画像をアップロードしてください", type=["png", "jpg", "jpeg"])
+r_thresh = st.slider("Rしきい値", 0, 255, 150)
+g_thresh = st.slider("Gしきい値", 0, 255, 100)
+b_thresh = st.slider("Bしきい値", 0, 255, 100)
+
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    img_array = np.array(image)
+    image_np = np.array(image)
+    st.image(image, caption="アップロード画像", use_container_width=True)
 
-    # RGBスライダー（minのみ）
-    st.sidebar.subheader("赤バー検出のRGB範囲")
-    r_min = st.sidebar.slider("R min", 0, 255, 200)
-    g_min = st.sidebar.slider("G min", 0, 255, 0)
-    b_min = st.sidebar.slider("B min", 0, 255, 0)
+    # 赤バー検出（閾値以下のRGBでマスク作成）
+    lower_bound = np.array([r_thresh, g_thresh, b_thresh])
+    upper_bound = np.array([255, 255, 255])
+    mask = cv2.inRange(image_np, lower_bound, upper_bound)
 
-    # RGB上限固定（単純化）
-    r_max, g_max, b_max = 255, 100, 100
+    # 検出マスクと元画像合成（赤→緑表示）
+    result_img = image_np.copy()
+    result_img[mask > 0] = [0, 255, 0]
+    st.image(result_img, caption="検出結果", use_container_width=True)
 
-    red_mask = (
-        (img_array[:, :, 0] >= r_min) & (img_array[:, :, 0] <= r_max) &
-        (img_array[:, :, 1] >= g_min) & (img_array[:, :, 1] <= g_max) &
-        (img_array[:, :, 2] >= b_min) & (img_array[:, :, 2] <= b_max)
-    )
-
-    result_image = img_array.copy()
-    result_image[red_mask] = [0, 0, 0]  # 赤バーを黒で可視化
-
-    st.image(result_image, caption="検出された赤バー", use_column_width=True)
-
-    # スコア計算（縦方向にスキャン）
-    bar_positions = np.where(red_mask.any(axis=1))[0]
-    unique_rows = np.unique(bar_positions)
-
-    # 簡易スコア（赤ピクセルの横幅を基準に）
+    # スコア計算（行ごとに赤バーの幅を評価）
     scores = []
-    for y in unique_rows:
-        row = red_mask[y, :]
-        width = np.sum(row)
-        if width > 0:
-            score = min(round(width / 50, 1), 3.0)  # 例：最大スコア3.0
+    height, width, _ = image_np.shape
+    for y in range(0, height, 40):  # 約40pxおきに縦走査
+        line = mask[y:y+30, :]
+        red_pixels = cv2.countNonZero(line)
+        score = round(min(3.0, 3.0 * red_pixels / width / 30), 2)
+        if red_pixels > 10:
             scores.append((y, score))
 
-    with st.expander("スコア一覧（縦位置・スコア）"):
+    if scores:
+        st.subheader("スコア一覧")
         for y, score in scores:
-            st.write(f"[{y}] → {score}")
-else:
-    st.info("左に画像をアップロードしてください。")
+            st.write(f"位置 {y}px → スコア: {score}")
+    else:
+        st.warning("有効な赤バーが見つかりませんでした。")
