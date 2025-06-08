@@ -18,7 +18,8 @@ if uploaded_file:
     # コピーボタン用出力
     if st.button("スコアのみコピー"):
         score_text = ""
-".join([str(v) for v in edited["スコア"]])
+score_text = "".join([str(v) for v in edited["スコア"]])
+
         st.code(score_text, language="text")
 
     # 検出画像表示
