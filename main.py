@@ -1,8 +1,8 @@
 
 import streamlit as st
-from utils import extract_bar_widths, extract_names_with_ocr, score_from_widths
 from PIL import Image
-import io
+import numpy as np
+from utils import extract_bar_widths, extract_names_with_ocr, score_from_widths
 
 st.set_page_config(layout="wide")
 st.title("赤バースコア判定ツール v11.2")
@@ -20,13 +20,11 @@ if uploaded_file:
 
     # コピーボタン用出力
     if edited is not None:
-        score_text = "".join([str(v) for v in edited["スコア"]])
+        score_text = "\n".join([str(v) for v in edited['スコア']])
         st.code(score_text, language="text")
 
-    # bar_image を PIL.Image に変換
-    if isinstance(bar_image, bytes):
-        bar_image = Image.open(io.BytesIO(bar_image))
-    elif hasattr(bar_image, "shape"):
+    # bar_imageがndarrayならPILに変換
+    if isinstance(bar_image, np.ndarray):
         bar_image = Image.fromarray(bar_image)
 
     # 検出画像表示
