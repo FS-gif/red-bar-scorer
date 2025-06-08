@@ -1,54 +1,65 @@
-
 import streamlit as st
-import cv2
 import numpy as np
 from PIL import Image
+import cv2
 import io
 
-st.title("Red Bar Scorer")
+st.set_page_config(layout="wide")
+st.title("赤バースコアリング v9")
 
 uploaded_file = st.file_uploader("画像をアップロードしてください", type=["png", "jpg", "jpeg"])
+
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     img_array = np.array(image)
     st.image(image, caption="アップロード画像", use_container_width=True)
 
-    r_min = st.slider("R 最小", 0, 255, 150)
-    r_max = st.slider("R 最大", 0, 255, 255)
-    g_min = st.slider("G 最小", 0, 255, 0)
-    g_max = st.slider("G 最大", 0, 255, 80)
-    b_min = st.slider("B 最小", 0, 255, 0)
-    b_max = st.slider("B 最大", 0, 255, 80)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        r_val = st.slider("R値", 0, 255, 200)
+    with col2:
+        g_val = st.slider("G値", 0, 255, 50)
+    with col3:
+        b_val = st.slider("B値", 0, 255, 50)
 
-    mask = cv2.inRange(img_array, (r_min, g_min, b_min), (r_max, g_max, b_max))
-    result = cv2.bitwise_and(img_array, img_array, mask=mask)
+    tolerance = st.slider("許容差 (±)", 0, 50, 30)
 
-    gray = cv2.cvtColor(result, cv2.COLOR_RGB2GRAY)
-    contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 色検出（RGB範囲）
+    lower = np.array([r_val - tolerance, g_val - tolerance, b_val - tolerance])
+    upper = np.array([r_val + tolerance, g_val + tolerance, b_val + tolerance])
+    mask = cv2.inRange(img_array, lower, upper)
 
-    widths = [cv2.boundingRect(cnt)[2] for cnt in contours if cv2.boundingRect(cnt)[2] > 30]
-    widths.sort(reverse=True)
+    # 輪郭検出
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    bar_data = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w > 20 and h > 10:  # 最小サイズでフィルタ
+            bar_data.append((x, y, w, h))
 
+    # スコア計算
+    bar_data = sorted(bar_data, key=lambda b: b[0])  # x位置で左→右にソート
+    widths = [b[2] for b in bar_data]
     scores = []
-    for w in widths:
-        if w >= 130:
-            scores.append(3.0)
-        elif w >= 100:
-            scores.append(2.5)
-        elif w >= 70:
-            scores.append(2.0)
-        elif w >= 60:
-            scores.append(1.5)
-        elif w >= 50:
-            scores.append(1.0)
-        else:
-            scores.append(0.5)
+    if widths:
+        max_w = max(widths)
+        bins = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+        thresholds = np.quantile(widths, [0, 0.1, 0.3, 0.5, 0.7, 0.9])
+        for w in widths:
+            for i, th in enumerate(thresholds[::-1]):
+                if w >= th:
+                    scores.append(bins[::-1][i])
+                    break
+    else:
+        st.warning("赤バーが検出できませんでした。")
 
-    st.image(result, caption="検出された赤バー", use_container_width=True)
+    # 結果表示
+    annotated = img_array.copy()
+    result_text = ""
+    for (x, y, w, h), score in zip(bar_data, scores):
+        cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(annotated, f"{score:.1f}", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        result_text += f"{score:.1f}\n"
 
-    if scores:
-        st.subheader("スコア")
-        for i, s in enumerate(scores):
-            st.write(f"{i+1}列目: スコア = {s}")
-        score_text = "\n".join([str(s) for s in scores])
-        st.download_button("スコアをコピー用に保存", score_text, file_name="scores.txt")
+    st.image(annotated, caption="検出＆スコア表示", use_container_width=True)
+    st.download_button("スコアをコピー形式でダウンロード", result_text, file_name="scores.txt")
