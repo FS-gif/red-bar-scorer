@@ -17,9 +17,8 @@ if uploaded_file:
 
     # コピーボタン用出力
     if edited is not None:
-    score_text = "".join([str(v) for v in edited['スコア']])
-    st.code(score_text, language="text")
-
+        score_text = "".join([str(v) for v in edited['スコア']])
+        st.code(score_text, language="text")
 
     # 検出画像表示
     st.image(bar_image, caption="検出されたバー", use_container_width=True)
