@@ -16,11 +16,10 @@ if uploaded_file:
     edited = st.data_editor(data, num_rows="dynamic")
 
     # コピーボタン用出力
-    if st.button("スコアのみコピー"):
-        score_text = ""
-score_text = "".join([str(v) for v in edited["スコア"]])
+    if edited is not None:
+    score_text = "".join([str(v) for v in edited['スコア']])
+    st.code(score_text, language="text")
 
-        st.code(score_text, language="text")
 
     # 検出画像表示
     st.image(bar_image, caption="検出されたバー", use_container_width=True)
