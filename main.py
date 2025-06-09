@@ -1,7 +1,7 @@
 
 import streamlit as st
+import cv2
 from PIL import Image
-import numpy as np
 from utils import extract_bar_widths, extract_names_with_ocr, score_from_widths
 
 st.set_page_config(layout="wide")
@@ -23,9 +23,8 @@ if uploaded_file:
         score_text = "\n".join([str(v) for v in edited['スコア']])
         st.code(score_text, language="text")
 
-    # bar_imageがndarrayならPILに変換
-    if isinstance(bar_image, np.ndarray):
-        bar_image = Image.fromarray(bar_image)
-
     # 検出画像表示
-    st.image(bar_image, caption="検出されたバー", use_container_width=True)
+    if bar_image is not None:
+        bar_image_rgb = cv2.cvtColor(bar_image, cv2.COLOR_BGR2RGB)
+        bar_pil = Image.fromarray(bar_image_rgb)
+        st.image(bar_pil, caption="検出されたバー", use_container_width=True)
